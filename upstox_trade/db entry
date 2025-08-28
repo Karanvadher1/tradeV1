@@ -1,0 +1,62 @@
+1. single table inheritance
+
+
+UI -> 1. user input fromdate and todate, instrument name - nifty, candle interval 1min/3min/5min...
+2. store that instrument data in database, with live also
+3. calculate swing trade for this data, save trade in database
+4. 
+
+
+1. store in db -> 
+    1. open
+    2. close
+    3. high
+    4. low
+    5. timestamp
+
+
+
+export object
+    title
+    note/comments
+    instrument name => nifty
+    from_date => 22 jun, 2025
+    to_date => 22 july, 2025
+    candle interval => 1min/3min/5min
+    export status - intiated / in progress / completed
+    created_at
+    updated_at
+    DO NOT ALLOW EDIT
+
+export candle records - using single table inheritance
+    type => 1min/3min/5min
+    candle_time => 9:15
+    candle_low
+    candle_high
+    candle_open
+    candle_close
+
+create csv export with export object and export candle records 
+    file name convention - title_currenttime_stratgery.csv
+
+after export complete,
+apply swing concept on export candle records do not need to check candle interval
+    create trade records with buy and sell price for one lot / one share
+
+
+trade table columns
+    symbol_name => NIFTYCE25200
+    lot size => 1
+    entry price => 100
+    entry_at => 9:21
+    sell price => 150
+    sell_at => 9:45
+    target price => 120
+    stratgry => swing
+    targeted_profit => 5000
+    actual_profit => 2000
+    profit_percentage => 20.55%
+
+
+
+

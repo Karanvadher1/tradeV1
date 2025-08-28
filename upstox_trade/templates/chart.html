@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Instrument Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --sidebar-bg: #ffffff;
+            --sidebar-border: #e0e0e0;
+            --text-color: #333;
+            --selected-bg: #e6f7ff;
+            --selected-border: #91d5ff;
+            --hover-bg: #f5f5f5;
+            --header-color: #1a237e;
+            --button-bg: #1a73e8;
+            --button-text: #ffffff;
+            --input-border: #ccc;
+            --card-bg: #ffffff;
+            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --navbar-bg: #ffffff;
+            --navbar-text: #555;
+        }
+
+        body.dark-mode {
+            --bg-color: #121212;
+            --sidebar-bg: #1e1e1e;
+            --sidebar-border: #333;
+            --text-color: #f5f5f5;
+            --selected-bg: #2a3a50;
+            --selected-border: #4a6a8a;
+            --hover-bg: #2c2c2c;
+            --header-color: #bb86fc;
+            --button-bg: #3700b3;
+            --button-text: #ffffff;
+            --input-border: #555;
+            --card-bg: #1e1e1e;
+            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            --navbar-bg: #1e1e1e;
+            --navbar-text: #ccc;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background-color: var(--navbar-bg);
+            border-bottom: 1px solid var(--sidebar-border);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: background-color 0.3s, border-bottom 0.3s;
+        }
+
+        .navbar-logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--header-color);
+        }
+
+        .navbar-buttons {
+            display: flex;
+            gap: 20px;
+        }
+
+        .navbar-buttons button {
+            background: none;
+            border: none;
+            color: var(--navbar-text);
+            font-size: 18px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .navbar-buttons button:hover {
+            color: var(--header-color);
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-border);
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+            transition: background-color 0.3s, border-right 0.3s;
+        }
+
+        .sidebar h3 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            color: var(--header-color);
+            text-transform: uppercase;
+        }
+
+        .index-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .index-list li {
+            padding: 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--sidebar-border);
+            font-size: 14px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .index-list li:last-child {
+            border-bottom: none;
+        }
+
+        .index-list li:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .index-list li.selected {
+            background-color: var(--selected-bg);
+            border-left: 4px solid var(--selected-border);
+            font-weight: bold;
+            color: var(--header-color);
+        }
+
+        .content {
+            flex: 1;
+            padding: 30px;
+            position: relative;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        #chart-title {
+            color: var(--header-color);
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        #candlestick-chart {
+            width: 100%;
+            height: 800px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--card-shadow);
+            background-color: var(--card-bg);
+            margin-bottom: 20px;
+            position: relative;
+            /* Add this to position controls */
+        }
+
+        #chart-controls-container {
+            position: absolute;
+            /* Position the controls relative to the chart */
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        body.dark-mode #chart-controls-container {
+            background-color: rgba(30, 30, 30, 0.8);
+        }
+
+        #chart-controls-container label {
+            font-weight: 500;
+        }
+
+        #chart-controls-container select,
+        #chart-controls-container button,
+        #chart-controls-container input[type="checkbox"] {
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid var(--input-border);
+            background-color: var(--sidebar-bg);
+            color: var(--text-color);
+        }
+
+        #chart-controls-container button {
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            cursor: pointer;
+            border: none;
+            transition: background-color 0.2s;
+        }
+
+        #chart-controls-container button:hover {
+            background-color: #1565c0;
+        }
+
+        #instrumentSearch {
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+
+        #hover-details {
+            position: absolute;
+            top: 100px;
+            right: 50px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10;
+            display: none;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .trades-container {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: var(--card-shadow);
+            margin-top: 20px;
+        }
+
+        .trades-container h3 {
+            margin: 0 0 15px 0;
+            color: var(--header-color);
+        }
+
+        #trades-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #trades-list li {
+            padding: 10px;
+            border-bottom: 1px solid var(--sidebar-border);
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        #trades-list li:hover {
+            background-color: var(--hover-bg);
+        }
+
+        #trades-list li:last-child {
+            border-bottom: none;
+        }
+
+        .placeholder-text {
+            text-align: center;
+            color: #888;
+            margin: 20px 0;
+        }
+
+        .trade-side.buy {
+            color: #186118;
+            font-weight: bold;
+        }
+
+        .trade-side.sell {
+            color: #D50000;
+            font-weight: bold;
+        }
+
+        .trade-quantity,
+        .trade-price,
+        .trade-time {
+            color: var(--text-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="navbar">
+        <div class="navbar-logo">
+            <i class="fas fa-chart-line"></i> Dashboard
+        </div>
+        <div class="navbar-buttons">
+            <button><i class="fas fa-user"></i></button>
+            <button><i class="fas fa-chart-bar"></i></button>
+            <button><i class="fas fa-bell"></i></button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <h3>Instruments</h3>
+            <input type="search" id="instrumentSearch" placeholder="Search instrument...">
+            <ul class="index-list">
+                {% for item in index %}
+                <li onclick="loadChart('{{ item.instrument_key }}', this)">
+                    {{ item.tradingsymbol }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="content">
+            <h3 id="chart-title">Select an instrument to view chart</h3>
+
+            <div id="candlestick-chart">
+                <div id="chart-controls-container">
+                    <label>Interval:
+                        <select id="intervalSelect">
+                            <option value="1m">1 min</option>
+                            <option value="3m">3 min</option>
+                            <option value="5m">5 min</option>
+                            <option value="30m">30 min</option>
+                            <option value="1h">1 hour</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        <input type="checkbox" id="themeToggle"> Dark Mode
+                    </label>
+
+                    <button onclick="resetZoom()">Reset Zoom</button>
+                    <label>
+                        <input type="checkbox" id="toggleCandles" checked> Show Candles
+                    </label>
+                </div>
+            </div>
+
+            <div id="hover-details"></div>
+
+            <div class="trades-container" id="trades-container">
+                <h3>Recent Trades</h3>
+                <ul id="trades-list">
+                    <p class="placeholder-text">Select an instrument to view trades.</p>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedInstrument = null;
+        let currentTheme = 'light';
+        let socket = null;
+
+        const allTraces = [
+            finalCandles = {
+                x: [],
+                open: [],
+                high: [],
+                low: [],
+                close: [],
+                type: 'candlestick',
+                name: 'Final Candles',
+                hoverinfo: 'none',
+                increasing: { line: { color: '#186118', width: 1 }, fillcolor: '#186118' },
+                decreasing: { line: { color: '#D50000', width: 1 }, fillcolor: '#D50000' }
+            },
+            liveCandleTrace = {
+                x: [],
+                open: [],
+                high: [],
+                low: [],
+                close: [],
+                type: 'candlestick',
+                name: 'Live Candle',
+                hoverinfo: 'none',
+                increasing: { line: { color: '#186118', width: 1 }, fillcolor: '#186118' },
+                decreasing: { line: { color: '#D50000', width: 1 }, fillcolor: '#D50000' }
+            },
+            tradeMarkers = {
+                x: [],
+                y: [],
+                mode: 'markers+text',
+                type: 'scatter',
+                name: 'Trade',
+                text: [],
+                hoverinfo: 'none',
+                textposition: 'top center',
+                marker: { color: 'orange', size: 10, symbol: 'line' }
+            }
+        ];
+
+        const layoutBase = {
+            dragmode: 'pan',
+            margin: { r: 10, t: 25, b: 40, l: 60, b: 80 },
+            showlegend: false,
+            hovermode: 'x',
+            yaxis: {
+                title: 'Price',
+                fixedrange: false,
+                tickformat: ',.2f',
+                gridcolor: 'rgba(0,0,0,0.01)'
+            },
+            xaxis: {
+                title: 'Time',
+                type: 'date',
+                fixedrange: false,
+                autorange: true,
+                gridcolor: 'rgba(0,0,0,0.01)',
+                tickangle: -45,
+                tickformat: '%I:%M %p',
+                nticks: 10,
+                rangeslider: {
+                    visible: false
+                }
+            }
+        };
+
+        function formatDateTime(dateObj) {
+            const options = {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            return dateObj.toLocaleString('en-US', options);
+        }
+
+        function formatTradeTime(dateObj) {
+            const hours = String(dateObj.getHours()).padStart(2, '0');
+            const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+            const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        function setupHoverListeners() {
+            const chartDiv = document.getElementById('candlestick-chart');
+            const detailsDiv = document.getElementById('hover-details');
+
+            chartDiv.on('plotly_hover', (eventData) => {
+                if (eventData.points && eventData.points.length > 0) {
+                    const point = eventData.points[0];
+                    const trace = allTraces[point.curveNumber];
+                    const pointIndex = point.pointIndex;
+
+                    if (!trace || !trace.open || trace.open[pointIndex] === undefined) {
+                        detailsDiv.style.display = 'none';
+                        return;
+                    }
+
+                    const time = trace.x[pointIndex];
+                    const open = trace.open[pointIndex];
+                    const high = trace.high[pointIndex];
+                    const low = trace.low[pointIndex];
+                    const close = trace.close[pointIndex];
+
+                    detailsDiv.innerHTML = `
+                        <b>Time:</b> ${time}<br>
+                        <b>Open:</b> ${open.toFixed(2)}<br>
+                        <b>High:</b> ${high.toFixed(2)}<br>
+                        <b>Low:</b> ${low.toFixed(2)}<br>
+                        <b>Close:</b> ${close.toFixed(2)}
+                    `;
+                    detailsDiv.style.display = 'block';
+                }
+            });
+
+            chartDiv.on('plotly_unhover', () => {
+                detailsDiv.style.display = 'none';
+            });
+        }
+
+        function fetchCandles() {
+            if (!selectedInstrument) return;
+
+            const intervalValue = document.getElementById('intervalSelect').value;
+            const intervalNumber = parseInt(intervalValue);
+            const intervalUnitChar = intervalValue.replace(/[0-9]/g, '');
+            const unitMap = { m: 'minutes', h: 'hours' };
+            const unitFull = unitMap[intervalUnitChar] || 'minutes';
+
+            const historyUrl = '/instrument/';
+            const intradayUrl = '/chart/';
+
+            const options = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ instrument_key: selectedInstrument, interval: intervalNumber, unit: unitFull })
+            };
+
+            const fetchHistory = fetch(historyUrl, options).then(r => r.json());
+            const fetchIntraday = fetch(intradayUrl, options).then(r => r.json());
+
+            Promise.all([fetchHistory, fetchIntraday])
+                .then(([historyData, intradayData]) => {
+                    if (!Array.isArray(historyData) || !Array.isArray(intradayData)) {
+                        console.error("Data is not in the expected array format.");
+                        return;
+                    }
+
+                    const combinedData = [...historyData, ...intradayData];
+                    combinedData.sort((a, b) => a.datetime - b.datetime);
+
+                    finalCandles.x = combinedData.map(d => formatDateTime(new Date(d.datetime * 1000)));
+                    finalCandles.open = combinedData.map(d => d.open);
+                    finalCandles.high = combinedData.map(d => d.high);
+                    finalCandles.low = combinedData.map(d => d.low);
+                    finalCandles.close = combinedData.map(d => d.close);
+
+                    liveCandleTrace.x = [];
+                    liveCandleTrace.open = [];
+                    liveCandleTrace.high = [];
+                    liveCandleTrace.low = [];
+                    liveCandleTrace.close = [];
+
+                    const chartDiv = document.getElementById('candlestick-chart');
+
+                    if (chartDiv.data) {
+                        Plotly.restyle(chartDiv, {
+                            x: [finalCandles.x, liveCandleTrace.x, tradeMarkers.x],
+                            open: [finalCandles.open, liveCandleTrace.open, tradeMarkers.open],
+                            high: [finalCandles.high, liveCandleTrace.high, tradeMarkers.high],
+                            low: [finalCandles.low, liveCandleTrace.low, tradeMarkers.low],
+                            close: [finalCandles.close, liveCandleTrace.close, tradeMarkers.close]
+                        }, [0, 1, 2]);
+
+                        Plotly.relayout(chartDiv, {
+                            'xaxis.categoryarray': finalCandles.x,
+                            'xaxis.autorange': true,
+                            'yaxis.autorange': true
+                        });
+                    } else {
+                        const initialLayout = {
+                            ...layoutBase,
+                            xaxis: {
+                                ...layoutBase.xaxis,
+                                categoryarray: finalCandles.x
+                            },
+                            paper_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
+                            plot_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
+                            font: { color: currentTheme === 'dark' ? '#f5f5f5' : '#333' }
+                        };
+                        Plotly.newPlot(chartDiv, [finalCandles, liveCandleTrace, tradeMarkers], initialLayout, { scrollZoom: true, staticPlot: false, displayModeBar: false });
+                        setupHoverListeners();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching or combining data:', error);
+                });
+        }
+
+        function fetchliveCandles(data) {
+            if (!Array.isArray(data) || data.length < 2) return;
+
+            const live = data[0];
+            const final = data[1];
+            const liveTime = new Date(live.datetime);
+            const finalTime = new Date(final.datetime);
+
+            const finalTimeString = formatDateTime(finalTime);
+            const liveTimeString = formatDateTime(liveTime);
+
+            const lastIdx = finalCandles.x.length - 1;
+            if (finalCandles.x.length === 0 || finalCandles.x[lastIdx] !== finalTimeString) {
+                finalCandles.x.push(finalTimeString);
+                finalCandles.open.push(final.open);
+                finalCandles.high.push(final.high);
+                finalCandles.low.push(final.low);
+                finalCandles.close.push(final.close);
+            }
+
+            liveCandleTrace.x = [liveTimeString];
+            liveCandleTrace.open = [live.open];
+            liveCandleTrace.high = [live.high];
+            liveCandleTrace.low = [live.low];
+            liveCandleTrace.close = [live.close];
+
+            Plotly.restyle(
+                'candlestick-chart',
+                {
+                    x: [finalCandles.x, liveCandleTrace.x, tradeMarkers.x],
+                    open: [finalCandles.open, liveCandleTrace.open, tradeMarkers.open],
+                    high: [finalCandles.high, liveCandleTrace.high, tradeMarkers.high],
+                    low: [finalCandles.low, liveCandleTrace.low, tradeMarkers.low],
+                    close: [finalCandles.close, liveCandleTrace.close, tradeMarkers.close]
+                },
+                [0, 1, 2]
+            );
+
+            Plotly.relayout('candlestick-chart', {
+                'xaxis.categoryarray': finalCandles.x,
+            });
+        }
+
+        function fetchTrade(data) {
+            if (!data) return;
+
+            const ceTrade = data.CE;
+            const peTrade = data.PE;
+
+            tradeMarkers.x = [
+                formatDateTime(new Date(ceTrade.datetime * 1000)),
+                formatDateTime(new Date(peTrade.datetime * 1000))
+            ];
+
+            tradeMarkers.y = [ceTrade.high, peTrade.low];
+            tradeMarkers.text = ['CE', 'PE'];
+
+            Plotly.restyle('candlestick-chart', {
+                x: [finalCandles.x, liveCandleTrace.x, tradeMarkers.x],
+                y: [undefined, undefined, tradeMarkers.y],
+                text: [undefined, undefined, tradeMarkers.text]
+            });
+        }
+
+        function fetchTrades() {
+            if (!selectedInstrument) {
+                document.getElementById('trades-list').innerHTML = '<p class="placeholder-text">Select an instrument to view trades.</p>';
+                return;
+            }
+
+            const tradesUrl = '/trades/';
+            const options = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ instrument_key: selectedInstrument })
+            };
+
+            fetch(tradesUrl, options)
+                .then(response => response.json())
+                .then(data => {
+                    const tradesList = document.getElementById('trades-list');
+                    tradesList.innerHTML = '';
+
+                    if (data.length === 0) {
+                        tradesList.innerHTML = '<p class="placeholder-text">No trades found for this instrument.</p>';
+                        return;
+                    }
+
+                    data.forEach(trade => {
+                        const li = document.createElement('li');
+                        li.innerHTML = `
+                            <span class="trade-side ${trade.side.toLowerCase()}">${trade.side}</span>
+                            <span class="trade-quantity">${trade.quantity}</span>
+                            <span class="trade-price">@ ₹${trade.price.toFixed(2)}</span>
+                            <span class="trade-time">${formatTradeTime(new Date(trade.datetime))}</span>
+                        `;
+                        tradesList.appendChild(li);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching trades:', error);
+                    document.getElementById('trades-list').innerHTML = '<p class="placeholder-text">Failed to load trades.</p>';
+                });
+        }
+
+        function getCookie(name) {
+            const v = `; ${document.cookie}`.split(`; ${name}=`);
+            return v.length === 2 ? v.pop().split(';')[0] : undefined;
+        }
+
+        function resetZoom() {
+            Plotly.relayout('candlestick-chart', { 'xaxis.autorange': true, 'yaxis.autorange': true });
+        }
+
+        function loadChart(instrumentKey, element) {
+            selectedInstrument = instrumentKey;
+
+            const allItems = document.querySelectorAll('.index-list li');
+            allItems.forEach(item => item.classList.remove('selected'));
+            if (element) {
+                element.classList.add('selected');
+            }
+
+            document.getElementById("chart-title").innerText = instrumentKey;
+
+            const now = new Date();
+            if (now.getHours() === 10 && now.getMinutes() === 30) {
+                document.getElementById('intervalSelect').value = '3m';
+            }
+
+            fetchCandles();
+            fetchTrades();
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: "set_instruments",
+                    instrumentKeys: [instrumentKey]
+                }));
+            }
+            if (!socket) {
+                socket = new WebSocket(`ws://127.0.0.1:8000/ws/stream/?instrument=${instrumentKey}`);
+                socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        fetchliveCandles(data.candles);
+                        fetchTrade(data.streaks);
+                    } catch (err) {
+                        console.error(err);
+                    }
+                };
+                socket.onopen = () => console.log('WebSocket connected');
+                socket.onerror = err => console.error('WebSocket error:', err);
+                socket.onclose = () => console.warn('WebSocket closed');
+            }
+        }
+
+        document.getElementById('themeToggle').addEventListener('change', e => {
+            currentTheme = e.target.checked ? 'dark' : 'light';
+            document.body.classList.toggle('dark-mode', e.target.checked);
+
+            const chartDiv = document.getElementById('candlestick-chart');
+            if (chartDiv.data) {
+                Plotly.relayout(chartDiv, {
+                    paper_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
+                    plot_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
+                    font: { color: currentTheme === 'dark' ? '#f5f5f5' : '#333' }
+                });
+            }
+        });
+
+        document.getElementById('toggleCandles').addEventListener('change', e => {
+            Plotly.restyle('candlestick-chart', { visible: e.target.checked ? true : 'legendonly' }, 0);
+            Plotly.restyle('candlestick-chart', { visible: e.target.checked ? true : 'legendonly' }, 1);
+        });
+
+        document.getElementById('intervalSelect').addEventListener('change', () => {
+            fetchCandles();
+            fetchTrades();
+        });
+
+        document.getElementById('instrumentSearch').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const listItems = document.querySelectorAll('.index-list li');
+            listItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

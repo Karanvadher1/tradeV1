@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Instrument Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background-color: #f4f4f4;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .sidebar h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+
+        .index-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .index-list li {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .index-list li:hover {
+            background-color: #e9e9e9;
+        }
+
+        .content {
+            flex: 1;
+            padding: 20px;
+        }
+
+        #chart {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h3>Indexes</h3>
+        <ul class="index-list">
+            {% for item in index %}
+            <li onclick="loadChart('{{ item.instrument_key }}')">
+                {{ item.tradingsymbol }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <!-- Chart area -->
+    <div class="content">
+        <h3 id="chart-title">Select an index</h3>
+        <div id="chart">
+            {% include 'chart.html' %}
+        </div>
+    </div>
+
+    <!-- Hidden form (not really used now, but kept for CSRF token) -->
+    <form id="chartForm" method="post" action="{% url 'instrument' %}" style="display:none;">
+        {% csrf_token %}
+        <input type="hidden" name="instrument_key" id="instrument_key_input">
+    </form>
+
+    <script>
+        let selectedInstrument = null;
+
+        function loadChart(instrumentKey) {
+            selectedInstrument = instrumentKey;
+            document.getElementById("chart-title").innerText = instrumentKey;
+
+            fetch("{% url 'instrument' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "X-CSRFToken": "{{ csrf_token }}"
+                },
+                body: "instrument_key=" + encodeURIComponent(instrumentKey)
+            })
+                .then(response => response.text())   // <-- Expect HTML, not JSON
+                .then(html => {
+                    document.getElementById("chart").innerHTML = html;
+
+                    // re-execute scripts inside chart.html
+                    const scripts = document.getElementById("chart").getElementsByTagName("script");
+                    for (let i = 0; i < scripts.length; i++) {
+                        eval(scripts[i].innerText);
+                    }
+                })
+                .catch(err => console.error(err));
+        };
+    </script>
+
+
+</body>
+
+</html>
