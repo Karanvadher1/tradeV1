@@ -3,7 +3,6 @@ import ssl
 import json
 import uuid
 import websockets
-from upstox_trade.domain.broker.services import MarketFeedProcessor
 import redis
 import requests, gzip, io, csv
 from celery import shared_task
@@ -53,38 +52,3 @@ def fetch_and_save_upstox_instruments():
                 print(f"❌ Error saving {row.get('instrument_key')}: {e}")
 
     return f"✅ {count} instruments saved/updated"
-
-
-@shared_task
-def upstox_live_feed():
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-
-    async def fetch():
-        from application.broker.service import BrokerAppService
-
-        token = BrokerAppService().get_token(user=1)
-        ws_url = "wss://..."
-
-        async with websockets.connect(ws_url, ssl=ssl_context) as ws:
-            await ws.send(
-                json.dumps(
-                    {
-                        "guid": str(uuid.uuid4()),
-                        "method": "sub",
-                        "data": {
-                            "mode": "full",
-                            "instrumentKeys": ["NSE_INDEX|Nifty 50"],
-                        },
-                    }
-                )
-            )
-            while True:
-                msg = await ws.recv()
-                feed_response = FeedResponse()
-                feed_response.ParseFromString(msg)
-                processed = MarketFeedProcessor.process(feed_response)
-                r.publish("market_feed", json.dumps(processed))
-
-    asyncio.run(fetch())

@@ -53,3 +53,21 @@ class Token(models.Model):
     refresh_token = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+
+
+class IntradayData(models.Model):
+    instrument = models.ForeignKey(InstrumentDetails, on_delete=models.CASCADE)
+    datetime = models.DateTimeField()
+    open = models.FloatField()
+    close = models.FloatField()
+    high = models.FloatField()
+    low = models.FloatField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Ensures that each instrument has only one entry per specific datetime
+        unique_together = ("instrument", "datetime")
+
+    def __str__(self):
+        return f"{self.instrument.instrument_key} at {self.datetime}"

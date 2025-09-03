@@ -29,8 +29,16 @@ DEBUG = config("DEBUG", cast=bool)
 
 ALLOWED_HOSTS = []
 
-ASGI_APPLICATION = "upstox_trade.asgi.application"  # replace with your project name
+ASGI_APPLICATION = "upstox_trade.asgi.application"
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
 # Application definition
 
 CELERY_BROKER_URL = "redis://localhost:6379/0"
@@ -38,15 +46,10 @@ CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
 
 
 CELERY_BEAT_SCHEDULE = {
-    # Live feed every minute from 9:15 AM to 3:30 PM
-    "upstox_live_feed": {
-        "task": "domain.broker.tasks.upstox_live_feed",
-        "schedule": crontab(minute="*/1", hour="9-15"),
-    },
     # CSV download every day at 9:00 AM
     "download-upstox-csv": {
-        "task": "domain.broker.tasks.download_upstox_csv",
-        "schedule": crontab(minute=0, hour=9),
+        "task": "upstox_trade.domain.broker.tasks.fetch_and_save_upstox_instruments",
+        "schedule": crontab(minute=18, hour=9),
     },
 }
 
@@ -138,11 +141,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Kolkata"
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = False
 
 
 # Static files (CSS, JavaScript, Images)

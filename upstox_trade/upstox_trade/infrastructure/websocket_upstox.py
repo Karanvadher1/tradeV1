@@ -1,193 +1,285 @@
-# websocket_upstox.py
-
-import traceback
-from upstox_trade.application.broker.service import BrokerAppService
 import asyncio
-import json
+from datetime import datetime, timedelta
 import ssl
 import uuid
-import upstox_client
-from channels.generic.websocket import AsyncWebsocketConsumer
-from google.protobuf.json_format import MessageToDict
+import json
 import websockets
-from upstox_trade.infrastructure import MarketDataFeed_pb2 as pb
+import aiohttp
 from decouple import config
-from channels.db import database_sync_to_async
-from urllib.parse import parse_qs
-
+from upstox_trade.infrastructure import MarketDataFeed_pb2 as pb
+from google.protobuf.json_format import MessageToDict
+import upstox_client
+from upstox_trade.domain.broker.services import BrokerService, IntradayService
 from upstox_trade.application.broker.service import BrokerAppService
-from upstox_trade.domain.broker.services import BrokerService
+from asgiref.sync import sync_to_async
 
 
-class UpstoxConsumer(AsyncWebsocketConsumer):
-    async def connect(self):
-        await self.accept()
-        self.instrument_key = None
-        self.keep_streaming = True
-        self.upstox_task = None
-        self.upstox_websocket = None
+class TickStreamService:
+    def __init__(self, instrument, use_websocket=True):
+        self.instrument = instrument
+        self.use_websocket = use_websocket
+        self.keep_running = True
+        self.intraday_service = IntradayService()
+        self.day_open = None
+        self.live_open = None
+        self.live_high = None
+        self.live_low = None
+        self.live_close = None
+        self.last_prev_ts = None
+        self.channel_layer = None
+        self.group_name = None
 
-        # Get initial instrument from query
-        query_string = self.scope.get("query_string", b"").decode()
-        qs = parse_qs(query_string)
-        instrument_values = qs.get("instrument", [])
-        if instrument_values:
-            self.instrument_key = instrument_values[0]
-            print("Initial instrument:", self.instrument_key)
-            self.upstox_task = asyncio.create_task(
-                self.fetch_market_data(self.instrument_key)
-            )
+        self.high_3m = None
+        self.low_3m = None
+        self.close_3m = None
+        self.candle_3m = {}
 
-    # async def disconnect(self, close_code):
-    #     print("Client disconnected. Reason:", close_code)
-
-    def get_market_data_feed_authorize(self, api_version, configuration):
-        api_instance = upstox_client.WebsocketApi(
-            upstox_client.ApiClient(configuration)
+    @staticmethod
+    def get_candle_start_times_to_now(
+        start_hour=9, start_minute=15, interval_minutes=3
+    ):
+        """
+        Calculates the most recent 3-minute candle start time from 9:15 AM.
+        """
+        now = datetime.now()
+        start_of_day = now.replace(
+            hour=start_hour, minute=start_minute, second=0, microsecond=0
         )
-        return api_instance.get_market_data_feed_authorize(api_version)
 
-    @database_sync_to_async
-    def get_access_token(self):
-        return BrokerAppService().get_token(user=config("CLIENT_ID"))
+        if now < start_of_day:
+            return None  # No candle has started yet today
+
+        # Calculate total minutes elapsed since market open
+        total_minutes_elapsed = (now - start_of_day).total_seconds() // 60
+
+        # Find the number of full intervals that have passed
+        intervals_passed = int(total_minutes_elapsed // interval_minutes)
+
+        # Calculate the exact start time of the most recent candle
+        most_recent_start_time = start_of_day + timedelta(
+            minutes=intervals_passed * interval_minutes
+        )
+
+        return most_recent_start_time
 
     def decode_protobuf(self, buffer):
         feed_response = pb.FeedResponse()
         feed_response.ParseFromString(buffer)
         return feed_response
 
-    async def disconnect(self, close_code):
-        self.keep_streaming = False
-        if self.upstox_websocket:
-            await self.upstox_websocket.close()
-        if self.upstox_task:
-            self.upstox_task.cancel()
-        print("Client disconnected")
+    async def save_intraday_data(self, live_candle):
+        """Wrap sync ORM call into async-safe"""
+        await sync_to_async(self.intraday_service.create_intraday_data)(live_candle)
 
-    async def receive(self, text_data=None, bytes_data=None):
-        if text_data:
-            msg = json.loads(text_data)
-            if msg.get("type") == "set_instruments":
-                new_instrument = msg.get("instrumentKeys")[0]
-                if new_instrument and new_instrument != self.instrument_key:
-                    print("Switching instrument to:", new_instrument)
+    async def get_intraday_data_by_date(self, instrument_key, date):
+        """Wrap sync ORM call into async-safe"""
+        return await sync_to_async(self.intraday_service.get_intraday_data_by_date)(
+            instrument_key, date
+        )
 
-                    # Close old feed immediately
-                    if self.upstox_websocket:
-                        await self.upstox_websocket.close()
-                        self.upstox_websocket = None
+    async def _process_tick_data(self, data_dict):
+        """Processes raw tick data and updates OHLC values."""
+        try:
+            current_ts = int(data_dict["currentTs"]) / 1000
+            indexFF = data_dict["feeds"][self.instrument]["ff"]
 
-                    if self.upstox_task:
-                        self.upstox_task.cancel()
-                        try:
-                            await self.upstox_task
-                        except asyncio.CancelledError:
-                            pass
-                        self.upstox_task = None
+            ltpc = indexFF["indexFF"]["ltpc"]
+            ohlc = indexFF["indexFF"]["marketOHLC"]["ohlc"]
 
-                    # Update current instrument
-                    self.instrument_key = new_instrument
+            ltp = ltpc["ltp"]
+            prev_candle = ohlc[1]
+            prev_candle["datetime"] = prev_candle["ts"]
+            day_candle = ohlc[0]
 
-                    # Start new feed
-                    self.upstox_task = asyncio.create_task(
-                        self.fetch_market_data(new_instrument)
+            if self.day_open is None:
+                self.day_open = day_candle["open"]
+
+            prev_ts = int(prev_candle["ts"])
+            if self.last_prev_ts is None:
+                self.last_prev_ts = prev_ts
+                self.live_open = ltp
+                self.live_high = ltp
+                self.live_low = ltp
+            elif prev_ts != self.last_prev_ts:
+                print(
+                    f"⏱️ Prev candle changed! Old: {self.last_prev_ts}, New: {prev_ts}"
+                )
+                live_candle = {
+                    "open": self.live_open,
+                    "high": self.live_high,
+                    "low": self.live_low,
+                    "close": ltp,
+                    "datetime": self.last_prev_ts,
+                    "instrument_key": self.instrument,
+                }
+                self.live_open = ltp
+                self.live_high = ltp
+                self.live_low = ltp
+                self.last_prev_ts = prev_ts
+
+            self.live_high = max(self.live_high, ltp)
+            self.live_low = min(self.live_low, ltp)
+
+            candle_start_3_minute = self.get_candle_start_times_to_now()
+            first_candle = await self.get_intraday_data_by_date(
+                self.instrument, candle_start_3_minute
+            )
+            if first_candle == {}:
+                self.candle_3m = {
+                    "open": self.live_open,
+                    "high": self.live_high,
+                    "low": self.live_low,
+                    "datetime": str(candle_start_3_minute),
+                    "instrument_key": self.instrument,
+                }
+            else:
+                self.high_3m = max(
+                    first_candle.get("high"),
+                    prev_candle["high"] if first_candle != {} else 0,
+                    ltp,
+                )
+                self.low_3m = min(
+                    first_candle.get("low"),
+                    prev_candle["low"] if first_candle != {} else ltp,
+                    ltp,
+                )
+
+                self.candle_3m = {
+                    "open": first_candle["open"],
+                    "high": self.high_3m,
+                    "low": self.low_3m,
+                    "datetime": str(first_candle["datetime"]),
+                    "instrument_key": self.instrument,
+                }
+
+            self.live_close = ltp
+            live_candle = {
+                "open": self.live_open,
+                "high": self.live_high,
+                "low": self.live_low,
+                "close": self.live_close,
+                "datetime": current_ts,
+                "instrument_key": self.instrument,
+            }
+            await self.save_intraday_data(live_candle)
+            self.candle_3m["close"] = ltp
+
+            # strategy swing
+            streaks = BrokerAppService().proccess_streak(self.instrument)
+            ce_trade_time = streaks["CE"]["datetime"] if streaks["CE"] else None
+            pe_trade_time = streaks["PE"]["datetime"] if streaks["PE"] else None
+
+            if streaks["CE"] and prev_candle["close"] > streaks["CE"]["close"]:
+                try:
+                    await BrokerService().create_trade(
+                        strike_price=prev_candle["close"],
+                        option_chain_call_or_put="CE",
+                        order_type="buy",
+                        time=prev_candle["datetime"],
+                        buy_at=prev_candle["close"],
+                        target=prev_candle["close"] + 40,
+                        sell_at=1,
+                        trade_time=ce_trade_time,
+                    )
+                except Exception as e:
+                    print("Error in create trade CE:", e)
+            if streaks["PE"] and prev_candle["close"] < streaks["PE"]["close"]:
+                try:
+                    await BrokerService().create_trade(
+                        strike_price=prev_candle["close"],
+                        option_chain_call_or_put="PE",
+                        order_type="buy",
+                        time=prev_candle["datetime"],
+                        buy_at=prev_candle["close"],
+                        target=prev_candle["close"] + 40,
+                        sell_at=1,
+                        trade_time=pe_trade_time,
                     )
 
-    async def fetch_market_data(self, instrument_key):
+                except Exception as e:
+                    print("Error in create trade PE:", e)
+
+            # Publish the data to the channel layer
+            if self.channel_layer and self.group_name:
+                message = {
+                    "type": "send_market_data",  # Matches the consumer method
+                    "message": {
+                        "live_candle": live_candle,
+                        "prev_candle": prev_candle,
+                        "candle_3m": self.candle_3m,
+                        "streaks": streaks,
+                    },
+                }
+                await self.channel_layer.group_send(self.group_name, message)
+
+        except Exception as e:
+            print("Tick stream data processing error:", e)
+
+    async def _websocket_loop(self):
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
-
+        access_token = await sync_to_async(BrokerAppService().get_token)(
+            user=config("CLIENT_ID")
+        )
         configuration = upstox_client.Configuration()
-        api_version = "3.0"
-        configuration.access_token = await self.get_access_token()
+        configuration.access_token = access_token
+        api_client = upstox_client.ApiClient(configuration)
+        api_instance = upstox_client.WebsocketApi(api_client)
+        response = api_instance.get_market_data_feed_authorize("3.0")
+        url = response.data.authorized_redirect_uri
+        print("Connecting to Upstox WS:", url)
+        async with websockets.connect(url, ssl=ssl_context) as ws:
+            await ws.send(
+                json.dumps(
+                    {
+                        "guid": str(uuid.uuid4()),
+                        "method": "sub",
+                        "data": {
+                            "mode": "full",
+                            "instrumentKeys": [self.instrument],
+                        },
+                    }
+                ).encode("utf-8")
+            )
+            while self.keep_running:
+                try:
+                    message = await ws.recv()
+                    decoded = self.decode_protobuf(message)
+                    data_dict = MessageToDict(decoded)
+                    await self._process_tick_data(data_dict)
+                except Exception as e:
+                    print("Tick stream error:", e)
+                    continue
 
-        try:
-            response = self.get_market_data_feed_authorize(api_version, configuration)
-            url = response.data.authorized_redirect_uri
+    async def _polling_loop(self):
+        print("Starting polling loop...")
+        polling_url = "http://127.0.0.1:8000/live-trades/"
+        headers = {"Content-Type": "application/json"}
+        async with aiohttp.ClientSession() as session:
+            while self.keep_running:
+                try:
+                    payload = {"instrument_key": self.instrument}
+                    async with session.post(
+                        polling_url, data=json.dumps(payload), headers=headers
+                    ) as resp:
+                        data = await resp.json()
+                        await self._process_tick_data(data)
+                except Exception as e:
+                    print("Polling error:", e)
+                await asyncio.sleep(5)
 
-            async with websockets.connect(url, ssl=ssl_context) as websocket:
-                print("Connected to Upstox WebSocket")
+    async def start(self):
+        """Keep reconnecting until stopped."""
+        while self.keep_running:
+            try:
+                if self.use_websocket:
+                    await self._websocket_loop()
+                else:
+                    await self._polling_loop()
+            except Exception as e:
+                print(f"⚠️ Connection error: {e}, retrying in 5s...")
+                await asyncio.sleep(5)
 
-                await websocket.send(
-                    json.dumps(
-                        {
-                            "guid": str(uuid.uuid4()),
-                            "method": "sub",
-                            "data": {
-                                "mode": "full",
-                                "instrumentKeys": [instrument_key],
-                            },
-                        }
-                    ).encode("utf-8")
-                )
-
-                while self.keep_streaming:
-                    try:
-                        message = await websocket.recv()
-                        decoded = self.decode_protobuf(message)
-                        data_dict = MessageToDict(decoded)
-                        data_dict = json.loads(json.dumps(data_dict))
-                        ohlc = data_dict["feeds"][instrument_key]["ff"]["indexFF"][
-                            "marketOHLC"
-                        ]["ohlc"]
-                        candle_data = [ohlc[0], ohlc[1]]
-                        for elem in candle_data:
-                            elem["datetime"] = int(elem["ts"]) / 1000
-                            del elem["ts"]
-                            del elem["interval"]
-                        streaks = BrokerAppService().proccess_streak(instrument_key)
-                        ce_close_list = streaks.get("CE")
-                        pe_close_list = streaks.get("PE")
-                        ce_trade_time = (
-                            ce_close_list.get("datetime") if ce_close_list else None
-                        )
-                        pe_trade_time = (
-                            pe_close_list.get("datetime") if pe_close_list else None
-                        )
-
-                        if streaks["CE"] and candle_data[0][
-                            "close"
-                        ] > ce_close_list.get("close"):
-                            try:
-                                await BrokerService().create_trade(
-                                    strike_price=candle_data[1]["close"],
-                                    option_chain_call_or_put="CE",
-                                    order_type="buy",
-                                    time=candle_data[1]["datetime"],
-                                    buy_at=candle_data[1]["close"],
-                                    target=candle_data[1]["close"] + 40,
-                                    sell_at=1,
-                                    trade_time=ce_trade_time,
-                                )
-                            except Exception as e:
-                                print("Error in create trade CE:", e)
-                        if streaks["PE"] and candle_data[0][
-                            "close"
-                        ] < pe_close_list.get("close"):
-                            try:
-                                await BrokerService().create_trade(
-                                    strike_price=candle_data[1]["close"],
-                                    option_chain_call_or_put="PE",
-                                    order_type="buy",
-                                    time=candle_data[1]["datetime"],
-                                    buy_at=candle_data[1]["close"],
-                                    target=candle_data[1]["close"] + 40,
-                                    sell_at=1,
-                                    trade_time=pe_trade_time,
-                                )
-
-                            except Exception as e:
-                                print("Error in create trade PE:", e)
-                        await self.send(
-                            text_data=json.dumps(
-                                {"candles": candle_data, "streaks": streaks}
-                            )
-                        )
-                    except Exception as e:
-                        print("Error in fetch loop:", e)
-                        traceback.print_exc()
-
-        except Exception as e:
-            print("Upstox connection failed:", e)
-            traceback.print_exc()
+    def stop(self):
+        self.keep_running = False

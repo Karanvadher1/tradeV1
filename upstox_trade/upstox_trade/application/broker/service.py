@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 from decouple import config
 import requests
@@ -6,12 +7,13 @@ import urllib.parse
 
 from decouple import config
 
-from upstox_trade.domain.broker.services import BrokerService
+from upstox_trade.domain.broker.services import BrokerService, IntradayService
 
 
 class BrokerAppService:
     def __init__(self):
         self.broker_service = BrokerService()
+        self.intraday_service = IntradayService()
 
     def login(self):
         pass
@@ -70,7 +72,7 @@ class BrokerAppService:
         )
         df = df.loc[:, ["datetime", "open", "high", "low", "close"]]
 
-        df["datetime"] = pd.to_datetime(df["datetime"]).astype(int) // 10**9
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.floor("min")
 
         return df.to_dict(orient="records")
 
@@ -93,7 +95,7 @@ class BrokerAppService:
         )
         df = df.loc[:, ["datetime", "open", "high", "low", "close"]]
 
-        df["datetime"] = pd.to_datetime(df["datetime"]).astype(int) // 10**9
+        df["datetime"] = pd.to_datetime(df["datetime"]).dt.floor("min")
 
         df.to_csv(instrument_key, index=False)
         return df.to_dict(orient="records")
@@ -126,3 +128,65 @@ class BrokerAppService:
 
     def get_index_details(self):
         return self.broker_service.get_index_details()
+
+    def get_intraday_data(self, instrument_key, interval):
+        qs = (
+            self.intraday_service.get_intraday_data(instrument_key)
+            .order_by("-created_at")[:2]
+            .values("datetime", "open", "high", "low", "close")
+        )
+
+        df = pd.DataFrame.from_records(qs)
+        df.set_index("datetime", inplace=True)
+
+        candles = (
+            df.resample(interval)
+            .agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                }
+            )
+            .dropna()
+            .reset_index()
+        )
+
+        return candles.to_dict(orient="records")
+
+    def build_candles(ticks, interval_minutes=1):
+        """
+        ticks: list of dicts with 'datetime' and 'close'
+        interval_minutes: candle size (1, 3, 5, 15, ...)
+        """
+        candles = []
+        grouped = defaultdict(list)
+
+        for tick in ticks:
+            dt = tick["datetime"].replace(
+                second=0, microsecond=0
+            )  # round to nearest min
+            # align to interval start
+            minute_block = dt.minute - (dt.minute % interval_minutes)
+            interval_start = dt.replace(minute=minute_block, second=0, microsecond=0)
+
+            grouped[interval_start].append(tick)
+
+        for interval_start, group in sorted(grouped.items()):
+            opens = group[0]["open"]
+            closes = group[-1]["close"]
+            highs = max(t["high"] for t in group)
+            lows = min(t["low"] for t in group)
+
+            candles.append(
+                {
+                    "datetime": interval_start,
+                    "open": opens,
+                    "high": highs,
+                    "low": lows,
+                    "close": closes,
+                }
+            )
+
+        return candles

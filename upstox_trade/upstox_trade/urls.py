@@ -17,13 +17,8 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include, re_path
-from upstox_trade.infrastructure.websocket_upstox import UpstoxConsumer
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("upstox_trade.interface.broker.urls")),
-]
-
-websocket_urlpatterns = [
-    re_path(r"ws/stream/$", UpstoxConsumer.as_asgi()),
 ]

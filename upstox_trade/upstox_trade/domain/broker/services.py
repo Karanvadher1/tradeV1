@@ -1,42 +1,10 @@
-from datetime import timezone
-from .models import AlgoStrategy, Trade, Token, InstrumentDetails
+from datetime import datetime, timedelta, timezone, date
+
+from django.db import IntegrityError
+import pytz
+from .models import AlgoStrategy, Trade, Token, InstrumentDetails, IntradayData
+
 from asgiref.sync import sync_to_async
-
-
-class MarketFeedProcessor:
-    @staticmethod
-    def process(feed_response):
-        """
-        Convert protobuf FeedResponse → clean dict
-        """
-        from google.protobuf.json_format import MessageToDict
-
-        data_dict = MessageToDict(feed_response)
-
-        # Example: only extract candles for Nifty 50
-        feeds = data_dict.get("feeds", {})
-        nifty_feed = feeds.get("NSE_INDEX|Nifty 50", {})
-        ohlc = (
-            nifty_feed.get("ff", {})
-            .get("indexFF", {})
-            .get("marketOHLC", {})
-            .get("ohlc", [])
-        )
-
-        candle_data = []
-        for entry in ohlc:
-            candle_data.append(
-                {
-                    "open": entry["open"],
-                    "high": entry["high"],
-                    "low": entry["low"],
-                    "close": entry["close"],
-                    "volume": entry.get("volume"),
-                    "datetime": int(entry["ts"]),
-                }
-            )
-
-        return candle_data
 
 
 class BrokerService:
@@ -126,4 +94,83 @@ class BrokerService:
         return obj, created
 
     def get_index_details(self):
-        return InstrumentDetails.objects.filter(instrument_type="INDEX")
+        return InstrumentDetails.objects.filter(
+            instrument_type="INDEX", tradingsymbol="NIFTY"
+        )
+
+
+class IntradayService:
+
+    def create_intraday_data(self, data):
+        """
+        Creates or updates an intraday data record in the database.
+        `data` is expected to be a dictionary with keys: instrument_key, datetime, open, high, low, close.
+        """
+        try:
+            instrument = InstrumentDetails.objects.get(
+                instrument_key=data.get("instrument_key")
+            )
+
+            # Convert Unix timestamp to a datetime object
+            timestamp = data.get("datetime")
+            dt_object = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+
+            obj, created = IntradayData.objects.update_or_create(
+                instrument=instrument,
+                datetime=dt_object,
+                defaults={
+                    "open": data.get("open"),
+                    "high": data.get("high"),
+                    "low": data.get("low"),
+                    "close": data.get("close"),
+                },
+            )
+            return obj, created
+        except InstrumentDetails.DoesNotExist:
+            print(
+                f"Error: Instrument with key '{data.get('instrument_key')}' not found."
+            )
+            return None, False
+        except IntegrityError as e:
+            print(f"Database integrity error: {e}")
+            return None, False
+        except Exception as e:
+            print(f"An unexpected error occurred while creating intraday data: {e}")
+            return None, False
+
+    def get_intraday_data(self, instrument_key):
+        """
+        Fetches all intraday data for a given instrument key.
+        Returns a Django QuerySet.
+        """
+        try:
+            instrument = InstrumentDetails.objects.get(instrument_key=instrument_key)
+
+            return IntradayData.objects.filter(
+                instrument=instrument, created_at__gte=date.today()
+            ).order_by("datetime")
+        except InstrumentDetails.DoesNotExist:
+            return IntradayData.objects.none()
+
+    def get_intraday_data_by_date(self, instrument_key, specific_date):
+        """
+        Fetch intraday data for a given instrument key and timestamp.
+        Handles timezone correctly by querying a range.
+        """
+        try:
+            candle_start_time = specific_date
+            instrument = InstrumentDetails.objects.get(instrument_key=instrument_key)
+
+            qs = IntradayData.objects.filter(
+                instrument=instrument,
+                datetime=candle_start_time,
+                created_at__gte=date.today(),
+            ).values("datetime", "open", "high", "low", "close")
+
+            return qs.first() if qs.exists() else {}
+
+        except InstrumentDetails.DoesNotExist:
+            return {}  # Changed from [] to {} for consistency
+        except Exception as e:
+            print(f"Error fetching intraday data: {e}")
+            return {}
