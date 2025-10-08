@@ -63,6 +63,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "upstox_trade.domain.broker",
+    "upstox_trade.domain.notification",
+    "upstox_trade.domain.order",
 ]
 
 MIDDLEWARE = [

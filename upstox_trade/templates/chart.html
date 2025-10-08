@@ -55,92 +55,12 @@
             transition: background-color 0.3s, color 0.3s;
         }
 
-        .navbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px 30px;
-            background-color: var(--navbar-bg);
-            border-bottom: 1px solid var(--sidebar-border);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            transition: background-color 0.3s, border-bottom 0.3s;
-        }
-
-        .navbar-logo {
-            font-size: 24px;
-            font-weight: bold;
-            color: var(--header-color);
-        }
-
-        .navbar-buttons {
-            display: flex;
-            gap: 20px;
-        }
-
-        .navbar-buttons button {
-            background: none;
-            border: none;
-            color: var(--navbar-text);
-            font-size: 18px;
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-
-        .navbar-buttons button:hover {
-            color: var(--header-color);
-        }
-
         .main-container {
             display: flex;
             flex: 1;
             overflow: hidden;
         }
 
-        .sidebar {
-            width: 280px;
-            background-color: var(--sidebar-bg);
-            border-right: 1px solid var(--sidebar-border);
-            overflow-y: auto;
-            padding: 20px;
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
-            transition: background-color 0.3s, border-right 0.3s;
-        }
-
-        .sidebar h3 {
-            margin: 0 0 15px 0;
-            font-size: 20px;
-            color: var(--header-color);
-            text-transform: uppercase;
-        }
-
-        .index-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .index-list li {
-            padding: 12px;
-            cursor: pointer;
-            border-bottom: 1px solid var(--sidebar-border);
-            font-size: 14px;
-            transition: background-color 0.2s, color 0.2s;
-        }
-
-        .index-list li:last-child {
-            border-bottom: none;
-        }
-
-        .index-list li:hover {
-            background-color: var(--hover-bg);
-        }
-
-        .index-list li.selected {
-            background-color: var(--selected-bg);
-            border-left: 4px solid var(--selected-border);
-            font-weight: bold;
-            color: var(--header-color);
-        }
 
         .content {
             flex: 1;
@@ -167,10 +87,12 @@
             background-color: var(--card-bg);
             margin-bottom: 20px;
             position: relative;
+            /* Add this to position controls */
         }
 
         #chart-controls-container {
             position: absolute;
+            /* Position the controls relative to the chart */
             top: 10px;
             left: 10px;
             z-index: 10;
@@ -291,33 +213,77 @@
         .trade-time {
             color: var(--text-color);
         }
+
+        .notification-popup {
+            position: absolute;
+            top: 50px;
+            /* adjust based on navbar */
+            right: 20px;
+            width: 300px;
+            max-height: 400px;
+            background: #fff;
+            border: 1px solid #ddd;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            overflow-y: auto;
+            z-index: 1000;
+        }
+
+        .popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            font-weight: bold;
+        }
+
+        .notification-list {
+            padding: 10px;
+        }
+
+        .notification-item {
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .notification-item:hover {
+            background: #e0f7ff;
+        }
+
+
+        .notification-item.unread {
+            font-weight: bold;
+            background-color: #d0f0ff;
+        }
+
+        /* Read notifications: normal text + muted background */
+        .notification-item.read {
+            font-weight: normal;
+            background-color: #f9f9f9;
+            color: #555;
+        }
     </style>
 </head>
 
 <body>
-    <div class="navbar">
-        <div class="navbar-logo">
-            <i class="fas fa-chart-line"></i> Dashboard
+    {% include "include/navbar.html" %}
+    <div id="notification-popup" class="notification-popup" style="display: none;">
+        <div class="popup-header">
+            <h4>Notifications</h4>
+            <span id="close-popup" style="cursor:pointer;">&times;</span>
         </div>
-        <div class="navbar-buttons">
-            <button><i class="fas fa-user"></i></button>
-            <button><i class="fas fa-chart-bar"></i></button>
-            <button><i class="fas fa-bell"></i></button>
+        <div id="notification-list" class="notification-list">
+            <!-- Notifications will be appended here dynamically -->
         </div>
     </div>
-
     <div class="main-container">
-        <div class="sidebar">
-            <h3>Instruments</h3>
-            <input type="search" id="instrumentSearch" placeholder="Search instrument...">
-            <ul class="index-list">
-                {% for item in index %}
-                <li onclick="loadChart('{{ item.instrument_key }}', this)">
-                    {{ item.tradingsymbol }}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
+        {% include "include/sidebar.html" %}
 
         <div class="content">
             <h3 id="chart-title">Select an instrument to view chart</h3>
@@ -360,9 +326,8 @@
         let selectedInstrument = null;
         let currentTheme = 'light';
         let socket = null;
-        let historicalDataLoaded = false;
-        let fetchIntervalId = null;
         const chartDiv = document.getElementById('candlestick-chart');
+
 
         const allTraces = [
             finalCandles = {
@@ -389,7 +354,7 @@
                 increasing: { line: { color: '#186118', width: 1.5 }, fillcolor: '#186118' },
                 decreasing: { line: { color: '#D50000', width: 1.5 }, fillcolor: '#D50000' }
             },
-            streakMarkers = {
+            tradeMarkers = {
                 x: [],
                 y: [],
                 mode: 'markers+text',
@@ -404,23 +369,14 @@
 
         const layoutBase = {
             dragmode: 'pan',
-            margin: { r: 80, t: 25, b: 40, l: 60 },
+            margin: { r: 10, t: 25, b: 40, l: 60, b: 80 },
             showlegend: false,
             hovermode: 'x',
             yaxis: {
                 title: 'Price',
-                side: 'right', // Moves the y-axis to the right side
                 fixedrange: false,
                 tickformat: ',.2f',
-                gridcolor: 'rgba(0,0,0,0.01)',
-                tickfont: {
-                    color: '#333'
-                },
-                title: {
-                    font: {
-                        color: '#333'
-                    }
-                }
+                gridcolor: 'rgba(0,0,0,0.01)'
             },
             xaxis: {
                 title: 'Time',
@@ -433,13 +389,19 @@
                 nticks: 10,
                 rangeslider: {
                     visible: false
-                },
-                rangebreaks: [
-                    { bounds: ["sat", "sun"] },
-                    { bounds: [15.5, 9.25], pattern: "hour" }
-                ]
+                }
             }
         };
+
+        function formatDateTime(dateObj) {
+            const options = {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            return dateObj.toLocaleString('en-US', options);
+        }
 
         function formatTradeTime(dateObj) {
             const hours = String(dateObj.getHours()).padStart(2, '0');
@@ -449,108 +411,141 @@
         }
 
         function setupHoverListeners() {
+            const chartDiv = document.getElementById('candlestick-chart');
             const detailsDiv = document.getElementById('hover-details');
-            if (typeof chartDiv.on === 'function') {
-                chartDiv.on('plotly_hover', (eventData) => {
-                    if (eventData.points && eventData.points.length > 0) {
-                        const point = eventData.points[0];
-                        const trace = allTraces[point.curveNumber];
-                        const pointIndex = point.pointIndex;
-                        if (!trace || !trace.open || trace.open[pointIndex] === undefined) {
-                            detailsDiv.style.display = 'none';
-                            return;
-                        }
-                        const time = trace.x[pointIndex];
-                        const open = trace.open[pointIndex];
-                        const high = trace.high[pointIndex];
-                        const low = trace.low[pointIndex];
-                        const close = trace.close[pointIndex];
 
-                        detailsDiv.innerHTML = `
+            chartDiv.on('plotly_hover', (eventData) => {
+                if (eventData.points && eventData.points.length > 0) {
+                    const point = eventData.points[0];
+                    const trace = allTraces[point.curveNumber];
+                    const pointIndex = point.pointIndex;
+
+                    if (!trace || !trace.open || trace.open[pointIndex] === undefined) {
+                        detailsDiv.style.display = 'none';
+                        return;
+                    }
+
+                    const time = trace.x[pointIndex];
+                    const open = trace.open[pointIndex];
+                    const high = trace.high[pointIndex];
+                    const low = trace.low[pointIndex];
+                    const close = trace.close[pointIndex];
+
+                    detailsDiv.innerHTML = `
                         <b>Time:</b> ${time}<br>
                         <b>Open:</b> ${open.toFixed(2)}<br>
                         <b>High:</b> ${high.toFixed(2)}<br>
                         <b>Low:</b> ${low.toFixed(2)}<br>
                         <b>Close:</b> ${close.toFixed(2)}
                     `;
-                        detailsDiv.style.display = 'block';
-                    }
-                });
+                    detailsDiv.style.display = 'block';
+                }
+            });
 
-                chartDiv.on('plotly_unhover', () => {
-                    detailsDiv.style.display = 'none';
-                });
-            } else {
-                console.error("Plotly event listeners cannot be set up. The library may be outdated.");
-            }
+            chartDiv.on('plotly_unhover', () => {
+                detailsDiv.style.display = 'none';
+            });
         }
 
-        function fetchAndRenderChart() {
-            if (!selectedInstrument) {
-                console.error("No instrument selected.");
+
+        function updateLive1mCandle(data) {
+            const live = data.live_candle;
+            const prev = data.prev_candle;
+
+            if (!live || !prev) {
+                console.error("Invalid live candle data format received for 1m.");
                 return;
             }
 
-            const intervalValue = document.getElementById('intervalSelect').value;
-            const intervalNumber = parseInt(intervalValue);
-            const intervalUnitChar = intervalValue.replace(/[0-9]/g, '');
-            const unitMap = { m: 'minutes', h: 'hours' };
-            const unitFull = unitMap[intervalUnitChar] || 'minutes';
+            // Convert timestamps properly (handles ISO or epoch)
+            const finalTime = isNaN(prev.datetime)
+                ? new Date(prev.datetime)
+                : new Date(parseInt(prev.datetime));
+            const liveTime = isNaN(live.datetime)
+                ? new Date(live.datetime)
+                : new Date(parseInt(live.datetime));
 
-            const intradayUrl = '/chart/';
-            const options = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                body: JSON.stringify({ instrument_key: selectedInstrument, interval: intervalNumber, unit: unitFull })
+            liveTime.setSeconds(0, 0);
+
+            // FIX: ensure Date conversion before .getTime()
+            const lastCandleTime = finalCandles.x.length > 0
+                ? new Date(finalCandles.x[finalCandles.x.length - 1]).getTime()
+                : null;
+
+            if (lastCandleTime === null || finalTime.getTime() > lastCandleTime) {
+                const newPoint = {
+                    x: [[finalTime]],
+                    open: [[prev.open]],
+                    high: [[prev.high]],
+                    low: [[prev.low]],
+                    close: [[prev.close]]
+                };
+                Plotly.extendTraces(chartDiv, newPoint, [0]);
+            }
+
+            const liveCandleUpdate = {
+                x: [[liveTime]],
+                open: [[live.open]],
+                high: [[live.high]],
+                low: [[live.low]],
+                close: [[live.close]]
+            };
+            Plotly.restyle(chartDiv, liveCandleUpdate, [1]);
+        }
+
+        function updateLive3mCandle(live3mCandleData) {
+            if (!live3mCandleData || !live3mCandleData.datetime) {
+                console.error("Invalid 3m candle data received. 'datetime' field is missing.");
+                return;
+            }
+
+            let liveTime;
+            // If datetime is numeric-like (epoch string or number)
+            if (!isNaN(live3mCandleData.datetime)) {
+                const epoch = parseInt(live3mCandleData.datetime, 10);
+                // Detect if it's in seconds or milliseconds
+                liveTime = new Date(epoch > 1e12 ? epoch : epoch * 1000);
+            } else {
+                // Already in "YYYY-MM-DD HH:mm:ss" format
+                liveTime = new Date(live3mCandleData.datetime.replace(" ", "T"));
+            }
+
+            if (isNaN(liveTime.getTime())) {
+                console.error("Failed to parse datetime:", live3mCandleData.datetime);
+                return;
+            }
+
+            const liveCandleUpdate = {
+                x: [[liveTime]],
+                open: [[live3mCandleData.open]],
+                high: [[live3mCandleData.high]],
+                low: [[live3mCandleData.low]],
+                close: [[live3mCandleData.close]]
             };
 
-            fetch(intradayUrl, options)
-                .then(r => r.json())
-                .then(intradayData => {
-                    if (!Array.isArray(intradayData)) {
-                        console.error("Data is not in the expected array format.");
-                        return;
-                    }
+            Plotly.restyle(chartDiv, liveCandleUpdate, [1]);
+        }
 
-                    const combinedData = intradayData.map(d => ({ ...d, datetime: new Date(d.datetime) }));
-                    combinedData.sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
 
-                    finalCandles.x = combinedData.map(d => d.datetime);
-                    finalCandles.open = combinedData.map(d => d.open);
-                    finalCandles.high = combinedData.map(d => d.high);
-                    finalCandles.low = combinedData.map(d => d.low);
-                    finalCandles.close = combinedData.map(d => d.close);
+        function fetchTrade(data) {
+            if (!data) return;
 
-                    liveCandleTrace.x = [];
-                    liveCandleTrace.open = [];
-                    liveCandleTrace.high = [];
-                    liveCandleTrace.low = [];
-                    liveCandleTrace.close = [];
-                    historicalDataLoaded = false;
+            const ceTrade = data.CE;
+            const peTrade = data.PE;
 
-                    const initialLayout = {
-                        ...layoutBase,
-                        paper_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
-                        plot_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
-                        font: { color: currentTheme === 'dark' ? '#f5f5f5' : '#333' },
-                        yaxis: {
-                            ...layoutBase.yaxis,
-                            tickfont: {
-                                color: currentTheme === 'dark' ? '#f5f5f5' : '#333'
-                            },
-                            title: {
-                                font: {
-                                    color: currentTheme === 'dark' ? '#f5f5f5' : '#333'
-                                }
-                            }
-                        }
-                    };
-                    Plotly.newPlot(chartDiv, allTraces, initialLayout, { scrollZoom: true, staticPlot: false, displayModeBar: false });
-                    setupHoverListeners();
-                })
-                .catch(error => {
-                    console.error('Error fetching or combining data:', error);
-                });
+            tradeMarkers.x = [
+                formatDateTime(new Date(ceTrade.datetime * 1000)),
+                formatDateTime(new Date(peTrade.datetime * 1000))
+            ];
+
+            tradeMarkers.y = [ceTrade.high, peTrade.low];
+            tradeMarkers.text = ['CE', 'PE'];
+
+            Plotly.restyle('candlestick-chart', {
+                x: [finalCandles.x, liveCandleTrace.x, tradeMarkers.x],
+                y: [undefined, undefined, tradeMarkers.y],
+                text: [undefined, undefined, tradeMarkers.text]
+            });
         }
 
         function updateChartData() {
@@ -603,9 +598,8 @@
                 });
         }
 
-        function fetchHistoricalData() {
-            if (historicalDataLoaded) return;
-            const historyUrl = '/instrument/';
+        function fetchCandles() {
+            if (!selectedInstrument) return;
 
             const intervalValue = document.getElementById('intervalSelect').value;
             const intervalNumber = parseInt(intervalValue);
@@ -613,159 +607,66 @@
             const unitMap = { m: 'minutes', h: 'hours' };
             const unitFull = unitMap[intervalUnitChar] || 'minutes';
 
+            const intradayUrl = '/chart/';
+
             const options = {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
                 body: JSON.stringify({ instrument_key: selectedInstrument, interval: intervalNumber, unit: unitFull })
             };
 
-            fetch(historyUrl, options)
+            fetch(intradayUrl, options)
                 .then(r => r.json())
-                .then(historyData => {
-                    if (!Array.isArray(historyData) || historyData.length === 0) {
-                        historicalDataLoaded = true;
+                .then(intradayData => {
+                    if (!Array.isArray(intradayData)) {
+                        console.error("Data is not in the expected array format.");
                         return;
                     }
 
-                    const parsedData = historyData.map(d => ({ ...d, datetime: new Date(d.datetime) }));
-                    parsedData.sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+                    const combinedData = [...intradayData];
 
-                    finalCandles.x = [...parsedData.map(d => d.datetime), ...finalCandles.x];
-                    finalCandles.open = [...parsedData.map(d => d.open), ...finalCandles.open];
-                    finalCandles.high = [...parsedData.map(d => d.high), ...finalCandles.high];
-                    finalCandles.low = [...parsedData.map(d => d.low), ...finalCandles.low];
-                    finalCandles.close = [...parsedData.map(d => d.close), ...finalCandles.close];
+                    finalCandles.x = combinedData.map(d => d.datetime);
+                    finalCandles.open = combinedData.map(d => d.open);
+                    finalCandles.high = combinedData.map(d => d.high);
+                    finalCandles.low = combinedData.map(d => d.low);
+                    finalCandles.close = combinedData.map(d => d.close);
 
-                    Plotly.restyle(chartDiv, {
-                        x: [finalCandles.x],
-                        open: [finalCandles.open],
-                        high: [finalCandles.high],
-                        low: [finalCandles.low],
-                        close: [finalCandles.close]
-                    }, [0]);
+                    const chartDiv = document.getElementById('candlestick-chart');
 
-                    historicalDataLoaded = true;
-                })
-                .catch(error => console.error('Error fetching historical data:', error));
-        }
-
-        function updateLive1mCandle(data) {
-            const live = data.live_candle;
-            const prev = data.prev_candle;
-
-            if (!live || !prev) {
-                console.error("Invalid live candle data format received for 1m.");
-                return;
-            }
-
-            const finalTime = new Date(parseInt(prev.datetime));
-            const liveTime = new Date(live.datetime);
-            liveTime.setSeconds(0, 0);
-            const lastCandleTime = finalCandles.x.length > 0 ? finalCandles.x[finalCandles.x.length - 1].getTime() : null;
-
-            if (lastCandleTime === null || finalTime.getTime() > lastCandleTime) {
-                const newPoint = {
-                    x: [[finalTime]],
-                    open: [[prev.open]],
-                    high: [[prev.high]],
-                    low: [[prev.low]],
-                    close: [[prev.close]]
-                };
-                Plotly.extendTraces(chartDiv, newPoint, [0]);
-            }
-
-            const liveCandleUpdate = {
-                x: [[liveTime]],
-                open: [[live.open]],
-                high: [[live.high]],
-                low: [[live.low]],
-                close: [[live.close]]
-            };
-            Plotly.restyle(chartDiv, liveCandleUpdate, [1]);
-        }
-
-        function updateLive3mCandle(live3mCandleData) {
-            if (!live3mCandleData || !live3mCandleData.datetime) {
-                console.error("Invalid 3m candle data received. 'datetime' field is missing.");
-                return;
-            }
-            console.log(live3mCandleData);
-
-            const liveTime = new Date(live3mCandleData.datetime);
-            if (isNaN(liveTime.getTime())) {
-                console.error("Failed to parse datetime string:", live3mCandleData.datetime);
-                return;
-            }
-
-            const liveCandleUpdate = {
-                x: [[liveTime]],
-                open: [[live3mCandleData.open]],
-                high: [[live3mCandleData.high]],
-                low: [[live3mCandleData.low]],
-                close: [[live3mCandleData.close]]
-            };
-
-            Plotly.restyle(chartDiv, liveCandleUpdate, [1]);
-        }
-
-        function fetchTrades() {
-            if (!selectedInstrument) {
-                document.getElementById('trades-list').innerHTML = '<p class="placeholder-text">Select an instrument to view trades.</p>';
-                return;
-            }
-
-            const tradesUrl = '/trades/';
-            const options = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-                body: JSON.stringify({ instrument_key: selectedInstrument })
-            };
-
-            fetch(tradesUrl, options)
-                .then(response => response.json())
-                .then(data => {
-                    const tradesList = document.getElementById('trades-list');
-                    tradesList.innerHTML = '';
-                    if (data.length === 0) {
-                        tradesList.innerHTML = '<p class="placeholder-text">No trades found for this instrument.</p>';
-                        return;
+                    if (chartDiv.data) {
+                        // 🔹 Use update instead of restyle to preserve layout/zoom
+                        Plotly.update(chartDiv, {
+                            x: [finalCandles.x, liveCandleTrace.x, tradeMarkers.x],
+                            open: [finalCandles.open, liveCandleTrace.open],
+                            high: [finalCandles.high, liveCandleTrace.high],
+                            low: [finalCandles.low, liveCandleTrace.low],
+                            close: [finalCandles.close, liveCandleTrace.close],
+                            y: [null, null, tradeMarkers.y],
+                            text: [null, null, tradeMarkers.text]
+                        }, {}, [0, 1, 2]);
+                    } else {
+                        const initialLayout = {
+                            ...layoutBase,
+                            xaxis: {
+                                ...layoutBase.xaxis,
+                                categoryarray: finalCandles.x
+                            },
+                            paper_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
+                            plot_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
+                            font: { color: currentTheme === 'dark' ? '#f5f5f5' : '#333' }
+                        };
+                        Plotly.newPlot(chartDiv, [finalCandles, liveCandleTrace, tradeMarkers], initialLayout, { scrollZoom: true, staticPlot: false, displayModeBar: false });
+                        setupHoverListeners();
                     }
-                    data.forEach(trade => {
-                        const li = document.createElement('li');
-                        li.innerHTML = `
-                        <span class="trade-side ${trade.side.toLowerCase()}">${trade.side}</span>
-                        <span class="trade-quantity">${trade.quantity}</span>
-                        <span class="trade-price">@ ₹${trade.price.toFixed(2)}</span>
-                        <span class="trade-time">${formatTradeTime(new Date(trade.datetime))}</span>
-                    `;
-                        tradesList.appendChild(li);
-                    });
                 })
                 .catch(error => {
-                    console.error('Error fetching trades:', error);
-                    document.getElementById('trades-list').innerHTML = '<p class="placeholder-text">Failed to load trades.</p>';
+                    console.error('Error fetching or combining data:', error);
                 });
         }
 
-        function fetchStreak(data) {
-            if (!data) return;
-            const ceTrade = data.CE;
-            const peTrade = data.PE;
-
-            streakMarkers.x = [
-                new Date(ceTrade.datetime * 1000),
-                new Date(peTrade.datetime * 1000)
-            ];
-            streakMarkers.y = [ceTrade.high, peTrade.low];
-            streakMarkers.text = ['CE', 'PE'];
-            if (chartDiv.data) {
-                Plotly.restyle(chartDiv, {
-                    x: [streakMarkers.x],
-                    y: [streakMarkers.y],
-                    text: [streakMarkers.text]
-                }, [2]);
-            }
-        }
 
         function getCookie(name) {
             const v = `; ${document.cookie}`.split(`; ${name}=`);
@@ -777,10 +678,6 @@
         }
 
         function loadChart(instrumentKey, element) {
-            if (fetchIntervalId) {
-                clearInterval(fetchIntervalId);
-            }
-
             selectedInstrument = instrumentKey;
 
             const allItems = document.querySelectorAll('.index-list li');
@@ -791,13 +688,12 @@
 
             document.getElementById("chart-title").innerText = instrumentKey;
 
-            fetchAndRenderChart();
-            fetchTrades();
+            const now = new Date();
+            if (now.getHours() === 10 && now.getMinutes() === 30) {
+                document.getElementById('intervalSelect').value = '3m';
+            }
 
-            fetchIntervalId = setInterval(() => {
-                updateChartData();
-                fetchTrades();
-            }, 30000);
+            fetchCandles();
 
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
@@ -805,24 +701,20 @@
                     instrumentKeys: [instrumentKey]
                 }));
             }
-
-            if (!socket || socket.readyState === WebSocket.CLOSED) {
+            if (!socket) {
                 socket = new WebSocket(`ws://127.0.0.1:8000/ws/trade-data/NSE_INDEX_Nifty_50/`);
                 socket.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
                         const intervalValue = document.getElementById('intervalSelect').value;
+
                         if (intervalValue === '3m' && data.candle_3m) {
                             updateLive3mCandle(data.candle_3m);
                         } else if (intervalValue === '1m' && data.live_candle) {
                             updateLive1mCandle(data);
                         }
-
-                        if (data.streaks) {
-                            fetchStreak(data.streaks);
-                        }
                     } catch (err) {
-                        console.error("Failed to parse WebSocket message:", err);
+                        console.error(err);
                     }
                 };
                 socket.onopen = () => console.log('WebSocket connected');
@@ -837,22 +729,10 @@
 
             const chartDiv = document.getElementById('candlestick-chart');
             if (chartDiv.data) {
-                const newColor = currentTheme === 'dark' ? '#f5f5f5' : '#333';
                 Plotly.relayout(chartDiv, {
                     paper_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
                     plot_bgcolor: currentTheme === 'dark' ? '#1e1e1e' : '#ffffff',
-                    font: { color: newColor },
-                    yaxis: {
-                        ...chartDiv.layout.yaxis,
-                        tickfont: {
-                            color: newColor
-                        },
-                        title: {
-                            font: {
-                                color: newColor
-                            }
-                        }
-                    }
+                    font: { color: currentTheme === 'dark' ? '#f5f5f5' : '#333' }
                 });
             }
         });
@@ -863,7 +743,7 @@
         });
 
         document.getElementById('intervalSelect').addEventListener('change', () => {
-            fetchAndRenderChart();
+            fetchCandles();
             fetchTrades();
         });
 
@@ -879,15 +759,103 @@
                 }
             });
         });
+        const now = new Date();
+        if (now.getHours() > 10 || (now.getHours() === 10 && now.getMinutes() >= 30)) {
+            document.getElementById('intervalSelect').value = '3m';
+        }
 
-        chartDiv.on('plotly_relayout', (eventData) => {
-            if (eventData['xaxis.range[0]'] && !historicalDataLoaded) {
-                const visibleStartDate = new Date(eventData['xaxis.range[0]']);
-                const firstDataPoint = finalCandles.x[0];
-                if (firstDataPoint && visibleStartDate < firstDataPoint) {
-                    fetchHistoricalData();
+        setInterval(fetchCandles, 30000); // every 30 sec
+
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const notificationBtn = document.getElementById('notification-btn');
+            const popup = document.getElementById('notification-popup');
+            const closeBtn = document.getElementById('close-popup');
+            const notificationList = document.getElementById('notification-list');
+            const notificationCount = document.getElementById('notification-count');
+
+            // Function to fetch and render notifications
+            const loadNotifications = () => {
+                fetch('/notifications/')
+                    .then(response => response.json())
+                    .then(data => {
+                        notificationList.innerHTML = ''; // Clear existing
+                        const notifications = data.notifications || [];
+
+                        if (notifications.length > 0) {
+                            notifications.forEach(notif => {
+                                const div = document.createElement('div');
+                                div.className = 'notification-item';
+                                div.classList.add(notif.is_read ? 'read' : 'unread');
+
+                                div.innerHTML = `
+                            <strong>${notif.content}</strong><br>
+                            Instrument: ${notif.instrument || 'N/A'}
+                        `;
+
+                                div.addEventListener('click', () => {
+                                    if (notif.instrument) {
+                                        // Build URL dynamically using Django route pattern
+                                        const url = `/order/create/${notif.instrument}/`;
+                                        window.open(url, '_blank');
+                                    }
+
+                                    // Mark as read visually
+                                    div.classList.remove('unread');
+                                    div.classList.add('read');
+
+                                    // Update badge count
+                                    updateBadgeCount();
+                                });
+
+                                notificationList.appendChild(div);
+                            });
+
+                            updateBadgeCount();
+                        } else {
+                            const div = document.createElement('div');
+                            div.className = 'notification-item';
+                            div.textContent = 'No new notifications';
+                            notificationList.appendChild(div);
+                            notificationCount.textContent = '';
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error fetching notifications:', err);
+                        notificationList.innerHTML = '<div class="notification-item">Failed to load notifications</div>';
+                    });
+            };
+
+            // Update badge based on unread notifications
+            const updateBadgeCount = () => {
+                const unreadCount = document.querySelectorAll('.notification-item.unread').length;
+                notificationCount.textContent = unreadCount > 0 ? unreadCount : '';
+            };
+
+            // Show popup and load notifications on click
+            notificationBtn.addEventListener('click', (e) => {
+                popup.style.display = 'block';
+                loadNotifications();
+                e.stopPropagation(); // Prevent popup from closing immediately
+            });
+
+            // Close popup
+            closeBtn.addEventListener('click', () => {
+                popup.style.display = 'none';
+            });
+
+            // Close popup when clicking outside
+            window.addEventListener('click', (e) => {
+                if (!popup.contains(e.target) && e.target !== notificationBtn) {
+                    popup.style.display = 'none';
                 }
-            }
+            });
+
+            // Optional: refresh notifications every 30s
+            setInterval(() => {
+                if (popup.style.display === 'block') loadNotifications();
+            }, 30000);
         });
     </script>
 </body>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background-color: var(--navbar-bg);
+            border-bottom: 1px solid var(--sidebar-border);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: background-color 0.3s, border-bottom 0.3s;
+        }
+
+        .navbar-logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--header-color);
+        }
+
+        .navbar-buttons {
+            display: flex;
+            gap: 20px;
+        }
+
+        .navbar-buttons button {
+            background: none;
+            border: none;
+            color: var(--navbar-text);
+            font-size: 18px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .navbar-buttons button:hover {
+            color: var(--header-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="navbar">
+        <div class="navbar-logo">
+            <i class="fas fa-chart-line"></i> Dashboard
+        </div>
+        <div class="navbar-buttons">
+            <button><i class="fas fa-user"></i></button>
+            <button><i class="fas fa-chart-bar"></i></button>
+            <button id="notification-btn">
+                <i class="fas fa-bell"></i>
+                <span id="notification-count" class="badge"></span>
+            </button>
+
+        </div>
+    </div>
+</body>
+
+</html>

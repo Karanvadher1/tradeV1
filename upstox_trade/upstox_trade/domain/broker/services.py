@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone, date
 
 from django.db import IntegrityError
-import pytz
 from .models import AlgoStrategy, Trade, Token, InstrumentDetails, IntradayData
+from django.db.models import Min
 
 from asgiref.sync import sync_to_async
 
@@ -61,6 +61,7 @@ class BrokerService:
             sell_at=sell_at,
             trade_time=trade_time,
         )
+        print("Trade is created", trade)
         return trade
 
     def save_token(self, token: dict, user: str):
@@ -93,10 +94,28 @@ class BrokerService:
         )
         return obj, created
 
-    def get_index_details(self):
+
+class InstrumentService:
+    def get_index_details(self, symbol=None):
+        if symbol:
+            return InstrumentDetails.objects.filter(tradingsymbol=symbol).first()
         return InstrumentDetails.objects.filter(
             instrument_type="INDEX", tradingsymbol="NIFTY"
         )
+
+    def get_option_chain_by_strike(self, strike, option_type):
+        today = datetime.now().date()
+
+        # Find the nearest expiry greater than today
+        nearest_expiry = InstrumentDetails.objects.filter(
+            strike=strike, option_type=option_type, expiry__gt=today
+        ).aggregate(Min("expiry"))["expiry__min"]
+
+        if nearest_expiry:
+            return InstrumentDetails.objects.filter(
+                strike=strike, option_type=option_type, expiry=nearest_expiry
+            ).first()
+        return InstrumentDetails.objects.none()
 
 
 class IntradayService:
@@ -112,7 +131,7 @@ class IntradayService:
             )
 
             # Convert Unix timestamp to a datetime object
-            timestamp = data.get("datetime")
+            timestamp = int(data.get("datetime")) / 1000
             dt_object = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
 
             obj, created = IntradayData.objects.update_or_create(

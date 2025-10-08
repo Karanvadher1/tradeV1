@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-border);
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+            transition: background-color 0.3s, border-right 0.3s;
+        }
+
+        .sidebar h3 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            color: var(--header-color);
+            text-transform: uppercase;
+        }
+
+        .index-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .index-list li {
+            padding: 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--sidebar-border);
+            font-size: 14px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .index-list li:last-child {
+            border-bottom: none;
+        }
+
+        .index-list li:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .index-list li.selected {
+            background-color: var(--selected-bg);
+            border-left: 4px solid var(--selected-border);
+            font-weight: bold;
+            color: var(--header-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sidebar">
+        <div style="height: 50%;">
+            <h3>Instruments</h3>
+            <input type="search" id="instrumentSearch" placeholder="Search instrument...">
+            <ul class="index-list">
+                {% for item in index %}
+                <li onclick="loadChart('{{ item.instrument_key }}', this)">
+                    {{ item.tradingsymbol }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div>
+            <h3>Orders</h3>
+            <ul class="index-list">
+                {% for item in orders %}
+                <li>
+                    {{ item.symbol }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</body>
+
+</html>

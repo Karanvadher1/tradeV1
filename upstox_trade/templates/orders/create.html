@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Create Order</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 60px auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #444;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            background: #007bff;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .message {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+
+        /* --- Lot Box Layout --- */
+        .order-size-container {
+            margin: 1rem 0;
+        }
+
+        .order-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .order-row label {
+            min-width: 90px;
+            font-weight: bold;
+        }
+
+        .box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            width: 50px;
+            height: 40px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #f9f9f9;
+            transition: background 0.2s;
+        }
+
+        .box:hover {
+            background: #eaeaea;
+        }
+
+        .value-box {
+            width: 80px;
+            cursor: default;
+            background: #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>Create New Order</h2>
+        <form id="orderForm">
+            <label for="instrument">Instrument</label>
+            <input type="text" id="instrument" name="symbol" value="{{ instrument }}" required>
+
+            <!-- Order Size in Lots -->
+            <div class="order-size-container">
+                <div class="order-row">
+                    <label>Lots</label>
+                    <div id="valueBox" class="box value-box">1</div>
+                    <div id="decrement" class="box">−</div>
+                    <div id="increment" class="box">+</div>
+                </div>
+            </div>
+
+            <label for="product">Product</label>
+            <select id="product" name="product_type" required>
+                <option value="I">Intraday</option>
+                <option value="D">Delivery</option>
+                <option value="MTF">Margin</option>
+            </select>
+
+            <label for="order_type">Order Type</label>
+            <select id="order_type" name="order_type" required>
+                <option value="MARKET">MARKET</option>
+                <option value="LIMIT">LIMIT</option>
+                <option value="SL">SL</option>
+                <option value="SL-M">SL-M</option>
+            </select>
+            <div id="priceContainer" style="display:none; margin-top:10px;">
+                <label for="price">Price</label>
+                <input type="number" id="price" name="price" step="0.05" placeholder="Enter price">
+            </div>
+            <label for="transaction_type">Transaction Type</label>
+            <select id="transaction_type" name="transaction_type" required>
+                <option value="BUY">BUY</option>
+                <option value="SELL">SELL</option>
+            </select>
+
+            <button type="submit">Place Order</button>
+        </form>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <script>
+        const orderTypeSelect = document.getElementById("order_type");
+        const priceContainer = document.getElementById("priceContainer");
+
+        orderTypeSelect.addEventListener("change", function () {
+            if (this.value === "LIMIT") {
+                priceContainer.style.display = "block";
+            } else {
+                priceContainer.style.display = "none";
+                document.getElementById("price").value = ""; // reset when not needed
+            }
+        });
+
+        document.getElementById("orderForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+
+            const form = e.target;
+            const quantity = getValue();
+
+            const data = {
+                symbol: form.symbol.value,
+                quantity: quantity,
+                product_type: form.product_type.value,
+                order_type: form.order_type.value,
+                price: form.price.value || 0,
+                transaction_type: form.transaction_type.value
+            };
+
+            try {
+                const instrument = document.getElementById("instrument").value;
+
+                const response = await fetch(`/order/${instrument}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": getCookie("csrftoken")
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                const messageEl = document.getElementById("message");
+
+                if (result.success) {
+                    messageEl.textContent = `✅ Order placed! ID: ${result.order_id}, Status: ${result.status}`;
+                    messageEl.className = "message success";
+                    form.reset();
+                } else {
+                    messageEl.textContent = `❌ Error: ${result.error}`;
+                    messageEl.className = "message error";
+                }
+            } catch (err) {
+                document.getElementById("message").textContent = "❌ Something went wrong!";
+            }
+        });
+
+        // CSRF helper for Django
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    cookie = cookie.trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        /* --- Lot Quantity Script --- */
+        const valueBox = document.getElementById("valueBox");
+        const incrementBtn = document.getElementById("increment");
+        const decrementBtn = document.getElementById("decrement");
+
+        function updateValue(newValue) {
+            valueBox.textContent = newValue;
+        }
+
+        function getValue() {
+            return parseInt(valueBox.textContent);
+        }
+
+        incrementBtn.addEventListener("click", () => {
+            updateValue(getValue() + 1);
+        });
+
+        decrementBtn.addEventListener("click", () => {
+            if (getValue() > 1) {
+                updateValue(getValue() - 1);
+            }
+        });
+    </script>
+
+</body>
+
+</html>

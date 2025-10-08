@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 import json
 from django.shortcuts import redirect, render
 import requests
@@ -6,8 +6,12 @@ from django.views.generic import RedirectView, View
 from django.http import HttpResponse, JsonResponse
 from decouple import config
 
-from upstox_trade.application.broker.service import BrokerAppService
+from upstox_trade.application.broker.service import (
+    BrokerAppService,
+    InstrumentAppService,
+)
 from upstox_trade.domain.broker.tasks import fetch_and_save_upstox_instruments
+from upstox_trade.application.order.services import OrderAppService
 
 # mappings.py or inside views.py
 INTERVAL_UNIT_MAP = {
@@ -66,10 +70,13 @@ class UpstoxCallbackView(View):
 class InstrumentView(View):
     def __init__(self, **kwargs):
         self.broker_app_service = BrokerAppService()
+        self.instrument_app_service = InstrumentAppService()
+        self.order_app_service = OrderAppService()
 
     def get(self, request):
-        index = self.broker_app_service.get_index_details()
-        return render(request, "chart.html", {"index": index})
+        index = self.instrument_app_service.get_index_details()
+        orders = self.order_app_service.list_all_orders()
+        return render(request, "chart.html", {"index": index, "orders": orders})
 
     def post(self, request):
         data = json.loads(request.body)
@@ -106,8 +113,14 @@ class ChartView(View):
         instrument_key = data.get("instrument_key")
         interval = data.get("interval")
         unit = data.get("unit")
+        now = datetime.now().time()
+        cutoff = time(10, 30)
+
+        if now >= cutoff:
+            interval = 3
+            unit = "minutes"
         try:
-            data = self.broker_app_service.get_instrument_data(
+            data = self.broker_app_service.get_instrument_intraday_data(
                 instrument_key, interval, unit
             )
             return JsonResponse(data, safe=False)
@@ -116,16 +129,24 @@ class ChartView(View):
 
 
 class StreakView(View):
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.broker_app_service = BrokerAppService()
 
     def get(self, request):
+        fetch_and_save_upstox_instruments.delay()
+
         try:
-            data = self.broker_app_service.proccess_streak()
+            data = self.broker_app_service.proccess_streak(
+                instrument_key="25100",
+                option_type="CE",
+                start_time="2025-09-12 11:36:00+05:30",
+                end_time="2025-09-12 11:45:00+05:30",
+            )
+            print(data)
+            return JsonResponse(data)
+
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
-
-        return JsonResponse(data)
 
 
 class StrategyView(View):

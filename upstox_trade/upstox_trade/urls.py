@@ -21,4 +21,6 @@ from django.urls import path, include, re_path
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("upstox_trade.interface.broker.urls")),
+    path("", include("upstox_trade.interface.notification.urls")),
+    path("", include("upstox_trade.interface.order.urls")),
 ]

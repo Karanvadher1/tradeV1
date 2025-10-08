@@ -1,8 +1,3 @@
-import asyncio
-import ssl
-import json
-import uuid
-import websockets
 import redis
 import requests, gzip, io, csv
 from celery import shared_task
@@ -16,11 +11,10 @@ r = redis.Redis(host="localhost", port=6379, db=0)
 def fetch_and_save_upstox_instruments():
     """
     Downloads Upstox instruments .gz file, extracts in-memory,
-    and saves directly into DB without writing CSV file.
+    deletes existing InstrumentDetails, and bulk creates all new ones.
     """
     url = "https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz"
     response = requests.get(url, stream=True)
-
     if response.status_code != 200:
         return f"❌ Failed to fetch data: {response.status_code}"
 
@@ -29,26 +23,33 @@ def fetch_and_save_upstox_instruments():
     with gzip.open(compressed_file, mode="rt", encoding="utf-8") as f:
         reader = csv.DictReader(f)
 
-        count = 0
+        instruments = []
+        now = timezone.now()
+
         for row in reader:
             try:
-                InstrumentDetails.objects.update_or_create(
-                    instrument_key=row.get("instrument_key"),
-                    defaults={
-                        "exchange_token": row.get("exchange_token"),
-                        "tradingsymbol": row.get("tradingsymbol"),
-                        "name": row.get("name"),
-                        "last_price": float(row.get("last_price") or 0),
-                        "expiry": row.get("expiry") or "",
-                        "strike": float(row.get("strike") or 0),
-                        "lot_size": float(row.get("lot_size") or 0),
-                        "instrument_type": row.get("instrument_type"),
-                        "option_type": row.get("option_type"),
-                        "modified_at": timezone.now(),
-                    },
+                instruments.append(
+                    InstrumentDetails(
+                        instrument_key=row.get("instrument_key"),
+                        exchange_token=row.get("exchange_token"),
+                        tradingsymbol=row.get("tradingsymbol"),
+                        name=row.get("name"),
+                        last_price=float(row.get("last_price") or 0),
+                        expiry=row.get("expiry") or "",
+                        strike=float(row.get("strike") or 0),
+                        lot_size=float(row.get("lot_size") or 0),
+                        instrument_type=row.get("instrument_type"),
+                        option_type=row.get("option_type"),
+                        modified_at=now,
+                    )
                 )
-                count += 1
             except Exception as e:
-                print(f"❌ Error saving {row.get('instrument_key')}: {e}")
+                print(f"❌ Error parsing {row.get('instrument_key')}: {e}")
 
-    return f"✅ {count} instruments saved/updated"
+    # Delete old data
+    InstrumentDetails.objects.all().delete()
+
+    # Bulk insert
+    InstrumentDetails.objects.bulk_create(instruments, batch_size=5000)
+
+    return f"✅ {len(instruments)} instruments inserted"

@@ -56,18 +56,6 @@
 </head>
 
 <body>
-    <!-- Sidebar -->
-    <div class="sidebar">
-        <h3>Indexes</h3>
-        <ul class="index-list">
-            {% for item in index %}
-            <li onclick="loadChart('{{ item.instrument_key }}')">
-                {{ item.tradingsymbol }}
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-
     <!-- Chart area -->
     <div class="content">
         <h3 id="chart-title">Select an index</h3>

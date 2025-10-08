@@ -29,7 +29,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(msg))
             asyncio.create_task(tick_service_instance.start())
 
-        @scheduler.scheduled_job("cron", day_of_week="mon-fri", hour=16, minute=45)
+        @scheduler.scheduled_job("cron", day_of_week="mon-fri", hour=17, minute=45)
         async def stop_ticks():
             msg = f"{'=' * 50} Stopping tick stream at 15:45... {'=' * 50}"
             self.stdout.write(self.style.WARNING(msg))
@@ -38,7 +38,7 @@ class Command(BaseCommand):
         scheduler.start()
 
         now = datetime.now().time()
-        if time(9, 0) <= now < time(16, 45):
+        if time(9, 0) <= now < time(17, 45):
             msg = f"{'=' * 50} Market already open ({now}), starting immediately... {'=' * 50}"
             self.stdout.write(self.style.SUCCESS(msg))
             loop.create_task(tick_service_instance.start())

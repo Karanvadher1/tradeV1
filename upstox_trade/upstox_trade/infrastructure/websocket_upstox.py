@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 import ssl
+import traceback
 import uuid
 import json
 import websockets
@@ -9,8 +10,8 @@ from decouple import config
 from upstox_trade.infrastructure import MarketDataFeed_pb2 as pb
 from google.protobuf.json_format import MessageToDict
 import upstox_client
-from upstox_trade.domain.broker.services import BrokerService, IntradayService
-from upstox_trade.application.broker.service import BrokerAppService
+from upstox_trade.domain.broker.services import IntradayService
+from upstox_trade.application.broker.service import BrokerAppService, StretagyAppService
 from asgiref.sync import sync_to_async
 
 
@@ -80,7 +81,11 @@ class TickStreamService:
     async def _process_tick_data(self, data_dict):
         """Processes raw tick data and updates OHLC values."""
         try:
-            current_ts = int(data_dict["currentTs"]) / 1000
+            # await StretagyAppService().calculate_trade(
+            #     instrument_key="NSE_INDEX|Nifty 50", candle=data_dict
+            # )
+
+            current_ts = int(data_dict["currentTs"])
             indexFF = data_dict["feeds"][self.instrument]["ff"]
 
             ltpc = indexFF["indexFF"]["ltpc"]
@@ -125,34 +130,38 @@ class TickStreamService:
                 self.instrument, candle_start_3_minute
             )
             if first_candle == {}:
-                self.candle_3m = {
-                    "open": self.live_open,
-                    "high": self.live_high,
-                    "low": self.live_low,
-                    "datetime": str(candle_start_3_minute),
-                    "instrument_key": self.instrument,
-                }
-            else:
+                first_candle = prev_candle
+
                 self.high_3m = max(
-                    first_candle.get("high"),
-                    prev_candle["high"] if first_candle != {} else 0,
-                    ltp,
+                    first_candle["high"],
+                    self.live_high,
                 )
                 self.low_3m = min(
-                    first_candle.get("low"),
-                    prev_candle["low"] if first_candle != {} else ltp,
-                    ltp,
+                    first_candle["low"],
+                    self.live_low,
                 )
-
-                self.candle_3m = {
-                    "open": first_candle["open"],
-                    "high": self.high_3m,
-                    "low": self.low_3m,
-                    "datetime": str(first_candle["datetime"]),
-                    "instrument_key": self.instrument,
-                }
-
+            else:
+                self.high_3m = max(
+                    first_candle["high"],
+                    prev_candle["high"],
+                    self.live_high,
+                )
+                self.low_3m = min(
+                    first_candle["low"],
+                    prev_candle["low"],
+                    self.live_low,
+                )
             self.live_close = ltp
+
+            self.candle_3m = {
+                "open": first_candle["open"],
+                "high": self.high_3m,
+                "low": self.low_3m,
+                "close": self.live_close,
+                "datetime": str(first_candle["datetime"]),
+                "instrument_key": self.instrument,
+            }
+
             live_candle = {
                 "open": self.live_open,
                 "high": self.live_high,
@@ -162,44 +171,8 @@ class TickStreamService:
                 "instrument_key": self.instrument,
             }
             await self.save_intraday_data(live_candle)
-            self.candle_3m["close"] = ltp
+            await StretagyAppService().calculate_trade(self.instrument, prev_candle)
 
-            # strategy swing
-            streaks = BrokerAppService().proccess_streak(self.instrument)
-            ce_trade_time = streaks["CE"]["datetime"] if streaks["CE"] else None
-            pe_trade_time = streaks["PE"]["datetime"] if streaks["PE"] else None
-
-            if streaks["CE"] and prev_candle["close"] > streaks["CE"]["close"]:
-                try:
-                    await BrokerService().create_trade(
-                        strike_price=prev_candle["close"],
-                        option_chain_call_or_put="CE",
-                        order_type="buy",
-                        time=prev_candle["datetime"],
-                        buy_at=prev_candle["close"],
-                        target=prev_candle["close"] + 40,
-                        sell_at=1,
-                        trade_time=ce_trade_time,
-                    )
-                except Exception as e:
-                    print("Error in create trade CE:", e)
-            if streaks["PE"] and prev_candle["close"] < streaks["PE"]["close"]:
-                try:
-                    await BrokerService().create_trade(
-                        strike_price=prev_candle["close"],
-                        option_chain_call_or_put="PE",
-                        order_type="buy",
-                        time=prev_candle["datetime"],
-                        buy_at=prev_candle["close"],
-                        target=prev_candle["close"] + 40,
-                        sell_at=1,
-                        trade_time=pe_trade_time,
-                    )
-
-                except Exception as e:
-                    print("Error in create trade PE:", e)
-
-            # Publish the data to the channel layer
             if self.channel_layer and self.group_name:
                 message = {
                     "type": "send_market_data",  # Matches the consumer method
@@ -207,13 +180,13 @@ class TickStreamService:
                         "live_candle": live_candle,
                         "prev_candle": prev_candle,
                         "candle_3m": self.candle_3m,
-                        "streaks": streaks,
                     },
                 }
                 await self.channel_layer.group_send(self.group_name, message)
 
         except Exception as e:
             print("Tick stream data processing error:", e)
+            print(traceback.print_exc())
 
     async def _websocket_loop(self):
         ssl_context = ssl.create_default_context()
